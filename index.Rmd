@@ -1,0 +1,377 @@
+---
+title: 'Forecasing Averages'
+author: "Mike Margolis"
+date: '`r format(Sys.Date(),"%B %d, %Y")` <br><br><br>'
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc: no
+    fig_caption: yes
+    theme: cerulean
+    toc_float: no
+  pdf_document:
+    toc: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+graphics.off()
+```
+
+```{r, required code, include=FALSE}
+require(fpp3)
+require(tidyquant)
+require(dplyr)
+require(tidyverse)
+require(knitr)
+require(reshape2)
+#require(lubridate)
+require(timetk)
+require(vingette)
+require(kableExtra)
+```
+
+
+<br> <br> <br> 
+<div align="center">
+***
+# Forecasting Averages:
+## Modeling Inflation With a One-Year Ahead Forecast
+***
+##### By: Mike Margolis
+<div align="Left">
+
+<br> <br> <br> <br> <br>
+
+***
+###### **Abstract**
+
+In this paper we will be forecasting U.S. inflation over a 12 month period. We will start with the Stock and Watson (1999) equation for determining inflation. This model revolves around the conventional Philips curve using unemployment and price level. We will be using a training sample from January 1982 to December 2018 and measuring our forecast against actual data from January 2019 to the most recently available data. All data will be retrieved from the Federal Reserve Economic Database in St. Louis.
+
+***
+###### **1. Introduction**
+
+For this analysis we will be retrieving the data from the Federal Reserve Economic Database in St. Louis (FRED). The data we will be using are: Personal Consumption Expenditures price index, chained to 2012, seasonally adjusted, measured in percent `PCEPI`. We also will be using monthly seasonally adjusted Unemployment Rate, measured in percent `UNRATE`. Non-seasonally adjusted one-year expected inflation rate, measured in percent `EXPINF1YR`. Seasonally adjusted total capacity utilization per month, measured in percents `TCU`. Seasonally adjusted new privately-owned housing units starts, measured in thousands of units per month `HOUST`.
+
+```{r grabing the data from FRED and turing the data frame into a wide time series tabble}
+Variables <- c("PCEPI", "UNRATE", "EXPINF1YR", "TCU", "HOUST")
+FRED_Inflation <- tq_get(Variables,get="economic.data",from= "1982-01-01") %>%
+  mutate(Date = yearmonth(date), value = price) %>%
+  select(-c(date, price)) %>%
+  as_tsibble(index = Date, key = symbol)
+FRED_Inflation_wide <- FRED_Inflation %>%
+  pivot_wider(names_from = symbol, values_from = value) %>%
+  as_tsibble()
+```
+
+We will use this data to try and model inflation in the United States, based on the equations used to specify the Philips curve.
+
+The Stock and Watson (1999) specification of the Philips curve is the following:
+
+\begin{align*}
+\pi^{12}_t - \pi_{t-12} = \phi + \beta(B)\Delta\pi_{t-12} + \gamma(B)u_{t-12} + \varepsilon_{t}
+\end{align*}
+
+
+The purpose of using `PCEPI` is inherent, the change in the `PCEPI` is known for capturing inflation (or deflation) across a wide range of consumer expenses. After transforming the data `PCEPI` will represent the level of inflation in the economy according to the left hand side of the above equation. The left hand side of the equation simply states the difference between the percentage change of price level `PCEPI` from a year ago to the current observed time ($\pi^{12}_t$) minus the percentage change of the 13th month lag to the 12th month lag ($\pi_{t-12}$), annualized. 
+
+There is a fundamental connection between the unemployment rate and the amount of inflation in the economy. The Philips curve is a concave slope demonstrating the relationship between the two variables. In the equation above ($u_t$) represents the annualized unemployment rate measured by `UNRATE`.  After a lot of math, the equation above reduces and allows us to conclude the one-year ahead steady-state inflation rate is equal to a constant ($\phi$) + the steady-state of inflation + a polynomial effect ($\gamma^{*}$) from past values of lagged unemployment (12 months) multiplied by the steady-state of unemployment. A basic interpretation of the Philips curve is at lower levels of unemployment, a deviation from the steady-state of unemployment, signals that firms are increasing their demand for labor. An increase demand for labor drives wages up and companies off-set their increased costs by passing them on to consumers through higher prices for their products. The increase in costs for the same products is inflation.  
+
+However, the economy is more complex then this interpretation and more variables and/or models are needed to further predict how inflation will change in the future. For each variable we will be constructing a model using the same Philips curve equation substituting ($u_t$) for each variable: `TCU`,`HOUST`, and `EXPINF1YR`.
+
+The purpose for using the number of new housing starts, `HOUST`, is often associated with inflation primarily through interest rates. If the Federal Reserve raises interest rates due to inflation, then permits for new housing developments will decrease. With less permits being issued new housing starts are going to decline. High interest rates also lead to an increase in the cost of borrowing. This increased costs of borrowing leads to less individuals willing to take out a loan to buy a new house. With less borrowing occurring in the market and less houses being developed housing prices will rise. 
+
+The variable coded `TCU` is included due to the simple theory that demonstrates how inflation occurs from the relationship between the amount of money and the amount of goods in an economy. The simple example is an economy with only 10 dollars and 10 bananas. From the ratio of goods to money we can establish that one banana is worth one dollar. If another $10 is introduced into the economy, the value of the dollar is now worth half a banana only if the amount of bananas available does not change, i.e. inflation. `TCU` is the amount of bananas we can produce this hypothetical economy we previously mentioned. If the total amount of capital being used by corporations and factories is approaching 100 percent, then the amount of goods that can be produced is reaching its upper bound. When the money supply is increasing and new goods are not being added to the economy inflation will occur. 
+
+***
+
+
+###### **2. Manipulating Our Data**
+
+The data we gathered from FRED is not stationary data, non-stationary data makes effective time series analysis practically impossible. Non-stationary time series data will have a systematic changes that are unpredictable. Non-stationary data has a stochastic trend, also referred to as "a random walk with a drift".. Time series data is comprised of three components: a trend/cycle component, a seasonal component, and a remainder component. Running time series forecasts on non-stationary data results in too much noise in the model due to trend and seasonality components. Leaving trends and seasonally components in the data reduces the ability to find signals in the models that provide actual information for our interpretation. Transforming the data will decompose the trend and seasonality components leaving the remainder. If we can produce a remainder that is comprised of white noise, we know our forecast is accurate. 
+
+In our data we have several variables with trends and seasonality. A tool we will use to generate stationary data from non-stationary data is differencing. Differencing is simply computing the differences between consecutive observations. Another technique we will be utilizing is converting level data to the natural logarithm of that same data. Using logs in tandem with differencing will transition our consecutive observations into month over month percent changes. This will help stabilize the variance of our time series, leading to a approximately normal distribution of our error terms. A quick scan of the raw data shows that no observations are equal to zero or have negative values which allows us to transform the data using logarithms. If our raw data had negative or zero values a power transformation would be needed. 
+
+We will be using the `KPSS` unit root test to test for the number of unit roots we have in each variable. Unit root tests will tell us if our data is stationary or not.  For variables that we find to have a unit root, we will be transforming those variable accordingly converting them to stationary data.
+
+```{r testing unit roots and stationarity}
+FRED_Inflation %>%
+  features(value, unitroot_ndiffs) %>%
+    kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+```{r hypothesis testing unit roots and stationarity, specifically Epected one-year inflation, include=FALSE}
+FRED_Inflation_wide %>%
+  features(EXPINF1YR, unitroot_kpss) %>%
+     kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+There seems to be a single unit root in all of our variables. We will test the hypothesis that there are no unit roots left in the data against the alternative hypothesis that there is a unit root left in the data and the data is not stationary.
+
+We can run the experiment that differencing a variable measured in percents will lead to the variable becoming stationary. We can run this experiment with the Expected One-Year Inflation variable `EXPINF1YR`. We will use:
+
+\begin{align*}
+H_o: EXPINF1YR_t \ is \ stationary \\
+H_a: EXPINF1YR_t \ is \ nonstationary \\
+\end{align*}
+
+as the following hypothesis test and observe the results using the following code:
+
+```{r hypothesis test to find second unit root after differencing}
+FRED_Inflation_wide %>%
+  mutate(diff_EXPINF1YR = difference(EXPINF1YR)) %>%
+  features(diff_EXPINF1YR, unitroot_kpss) %>%
+   kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+From the large p-value produced from this test, it seems that after differencing this variable, there are no unit roots left in the data. We can concluded that our Expected One-Year Inflation variable is stationary. 
+
+We will then apply the rules discussed above and transform each variable in the data accordingly.
+
+```{r transforming the variables into stationary variables}
+FRED_Inflation_final <- FRED_Inflation_wide %>% 
+  select(c(PCEPI, UNRATE, EXPINF1YR ,TCU, HOUST)) %>%
+  mutate(infl = 1200*log(PCEPI/lag(PCEPI))) %>% 
+  mutate(dinfl = infl - lag(infl,1)) %>% 
+  mutate(dinfl12 = 100*log(PCEPI/lag(PCEPI,12)) - lag(infl,12)) %>% 
+  mutate(unrate = UNRATE - lag(UNRATE)) %>% 
+  mutate(dinflexp = EXPINF1YR - lag(EXPINF1YR)) %>%
+  mutate(tcu = TCU - lag(TCU)) %>% 
+  mutate(houst = 100*log(HOUST/lag(HOUST))) %>% 
+  select(-c(PCEPI, UNRATE, EXPINF1YR ,TCU, HOUST)) %>%
+    drop_na() 
+  
+train_data <- FRED_Inflation_final %>% filter_index(~ "2019-12")
+test_data <- FRED_Inflation_final %>% filter_index("2020-01" ~ .)
+```
+
+<div align="Left">
+
+Now that the data is stationary we can begin our analysis. We will be using basic Time Series Linear Models from the `FPP3` package.
+
+***
+
+```{r, include=FALSE}
+fitPhillips <- train_data %>% 
+  model(
+    mPC = TSLM(dinfl12 ~ 1 +
+                 lag(dinfl,12) + lag(dinfl,13) + lag(dinfl,14) +
+                 lag(dinfl,15) + lag(dinfl,16) + lag(dinfl,17) +
+                 lag(dinfl,18) + lag(dinfl,19) + lag(dinfl,20) +
+                 lag(dinfl,21) + lag(dinfl,22) + lag(dinfl,23) +
+                 lag(unrate,12) + lag(unrate,13) + lag(unrate,14) +
+                 lag(unrate,15) + lag(unrate,16) + lag(unrate,17) +
+                 lag(unrate,18) + lag(unrate,19) + lag(unrate,20) +
+                 lag(unrate,21) + lag(unrate,22) + lag(unrate,23) 
+                 )
+    
+  )
+report(fitPhillips)
+```
+
+```{r, include=FALSE}
+gg_tsresiduals(fitPhillips)
+```
+
+<div align="Left"> 
+
+###### **3. Modeling the Philips Curve**
+
+The following specifications for our four models is listed in the code below:
+
+```{r}
+fit <- train_data %>%
+  model(
+    mUMP = TSLM(dinfl12 ~ 1 +
+                 lag(dinfl,12) + lag(dinfl,13) + lag(dinfl,14) +
+                 lag(dinfl,15) + lag(dinfl,16) + lag(dinfl,17) +
+                 lag(dinfl,18) + lag(dinfl,19) + lag(dinfl,20) +
+                 lag(dinfl,21) + lag(dinfl,22) + lag(dinfl,23) +
+                 lag(unrate,12) + lag(unrate,13) + lag(unrate,14) +
+                 lag(unrate,15) + lag(unrate,16) + lag(unrate,17) +
+                 lag(unrate,18) + lag(unrate,19) + lag(unrate,20) +
+                 lag(unrate,21) + lag(unrate,22) + lag(unrate,23) 
+                 ),
+
+    mTCU = TSLM(dinfl12 ~ 1 +
+                 lag(dinfl,12) + lag(dinfl,13) + lag(dinfl,14) +
+                 lag(dinfl,15) + lag(dinfl,16) + lag(dinfl,17) +
+                 lag(dinfl,18) + lag(dinfl,19) + lag(dinfl,20) +
+                 lag(dinfl,21) + lag(dinfl,22) + lag(dinfl,23) +
+                 lag(tcu,12) + lag(tcu,13) + lag(tcu,14) +
+                 lag(tcu,15) + lag(tcu,16) + lag(tcu,17) +
+                 lag(tcu,18) + lag(tcu,19) + lag(tcu,20) +
+                 lag(tcu,21) + lag(tcu,22) + lag(tcu,23) 
+                 ),
+
+    mHOUST = TSLM(dinfl12 ~ 1 +
+                 lag(dinfl,12) + lag(dinfl,13) + lag(dinfl,14) +
+                 lag(dinfl,15) + lag(dinfl,16) + lag(dinfl,17) +
+                 lag(dinfl,18) + lag(dinfl,19) + lag(dinfl,20) +
+                 lag(dinfl,21) + lag(dinfl,22) + lag(dinfl,23) +
+                 lag(houst,12) + lag(houst,13) + lag(houst,14) +
+                 lag(houst,15) + lag(houst,16) + lag(houst,17) +
+                 lag(houst,18) + lag(houst,19) + lag(houst,20) +
+                 lag(houst,21) + lag(houst,22) + lag(houst,23) 
+                 ),
+
+    mdinflexp = TSLM(dinfl12 ~ 1 +
+                 lag(dinfl,12) + lag(dinfl,13) + lag(dinfl,14) +
+                 lag(dinfl,15) + lag(dinfl,16) + lag(dinfl,17) +
+                 lag(dinfl,18) + lag(dinfl,19) + lag(dinfl,20) +
+                 lag(dinfl,21) + lag(dinfl,22) + lag(dinfl,23) +
+                 lag(dinflexp,12) + lag(dinflexp,13) + lag(dinflexp,14) +
+                 lag(dinflexp,15) + lag(dinflexp,16) + lag(dinflexp,17) +
+                 lag(dinflexp,18) + lag(dinflexp,19) + lag(dinflexp,20) +
+                 lag(dinflexp,21) + lag(dinflexp,22) + lag(dinflexp,23) 
+                 )
+  )
+```
+
+```{r checking coefficent on each model, include=FALSE}
+tidy(fit)
+```
+
+```{r}
+accuracy(fit) %>%
+   select(c(".model",".type" ,"MAPE")) %>%
+  kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+The table above is given by the `accuracy` command. This command returns a list of summary measures from the four forecasting models we used. The measurement we are most interested in is the mean absolute percentage error (MAPE). This displays the absolute value of the average difference between our forecast values minus the actual values for each time period, coverted to a percentage. The model with the lowest MAPE determines which model most accurately forecasted inflation. Out of the four models we used so far, the `TCU` variable model has predicted future inflation the most accurately. 
+
+Although our the `TCU` model performed the best out of the bunch, this does not allow us to conclude that this model is useful. By observing the residual plot below generated from the `gg_tsrediduals` command, we can see our residuals are not white noise. The Auto-correlation function plot (acf) shows that our model has serious serial correlation in our error terms. A shock in the first error term persist as a geometric decomposition up until the 7th lagged period. Even after the 7th lagged period the model seems to over correct and continue to have serial correlation until the 16th lagged period. A correlated shock in the error term seems to affect our model for about 16 months or about a year and a half after the shock occurred. This is far from a good model to forecast future inflation.
+
+ <div align="center"> 
+```{r residual plots TCU, warning=FALSE}
+fit %>% select(mTCU) %>% gg_tsresiduals()
+```
+<div align="Left">
+
+<br>
+
+The graph below shows each model forecast of inflation from 2020 to 2022 with a 95% confidence level surrounding each forecast:
+
+ <div align="center"> 
+ 
+```{r, graph forecast of 2020 to 2022 compared to actual data}
+fc_fit <- fit %>% forecast(new_data = test_data)
+fc_fit %>% autoplot(filter(FRED_Inflation_final, year(Date) > 2016), level = c(95)) +
+  labs(caption = "Time Series data taken from FRED database", aes(color = "blue")) + 
+   labs(title = "Time Series Linear Model Forecast") +
+  ylab("Inflation Rate (measured in percent)") +
+  xlab("Month")
+```
+
+<div align="Left">
+
+Looking at the graph of our four forecasted models compared to the actual data, we find that all of the models fail at certain aspects of their forecasting ability. The `TCU` model fails to forecast a large spike in inflation our 2021 and over corrects by over estimating inflation around August of 2021. However, it does comparatively do the best job at sticking around the higher rates of inflation after it's over prediction. `EXPINF1YR` and `HOUST` do a good job at keeping up with the large spike in 2021, however they fail to catch up to the higher levels of inflation around August of 2021 and under predict inflation for the remainder of the test data window. The unemployment model `UMP` is all over the place. From under predicting to over predicted back to under predicting, the model does not seem to know how to deal with inflation. This is not all the models fault the U.S. is currently experiencing distorted levels of unemployment and the job market is radically changing in unprecedented ways.
+
+We observe that the models working independently from each other all fail to accurately forecast inflation from 2020 to 2022. But what if the models could work with each other. How accurately would the average of all four of these models forecast inflation? In the next section we will create an ensemble model which consists of the average of all four models in one.
+
+*** 
+
+ <div align="Left"> 
+ 
+
+###### **4. Improving Our Forecast: The Ensemble Model**
+
+
+The code below shows how will use the `combo` function to take the average of all four models and construct an ensemble model:
+
+```{r, graph forecast of TCU 2020 to 2022 compared to actual data, include=FALSE}
+fc_TCU <- fit %>%
+  select("mTCU") %>% 
+  forecast(new_data = test_data)
+fc_TCU %>% autoplot(filter(FRED_Inflation_final, year(Date) > 2016), level = c(95)) +
+  labs(caption = "Time Series data taken from FRED database", aes(color = "blue")) + 
+   labs(title = "Time Series Linear Model Forecast") +
+  ylab("Inflation Rate (measured in percent)") +
+  xlab("Month")
+```
+
+```{r, create ensemble model which is an average of the four previuos models}
+Ensemble <- fit %>% transmute(combo = (mUMP + mTCU + mHOUST + mdinflexp)/4)
+```
+
+ <div align="left"> 
+
+```{r, include=FALSE}
+accuracy(Ensemble) %>%
+   select(c(".model",".type" ,"MAPE")) %>%
+  kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+Ensemble %>% gg_tsresiduals()
+```
+
+```{r organize all models into one fit group}
+fit_all <- fit %>%
+  mutate(combo = (mUMP + mTCU + mHOUST + mdinflexp)/4)
+```
+ <div align="center"> 
+```{r graph ensemble and orginal models forecast of 2020 to 2022 compared to actual data}
+
+fc_fit_all <- fit_all %>% forecast(new_data = test_data)
+fc_fit_all %>% autoplot(filter(FRED_Inflation_final, year(Date) > 2016), level = c(95)) +
+    labs(caption = "Time Series data taken from FRED database", aes(color = "blue")) + 
+   labs(title = "Time Series Linear Model Forecast") +
+  ylab("Inflation Rate (measured in percent)") +
+  xlab("Month")
+```
+
+ <div align="Left"> 
+ 
+We can observe that this model, similar to the `TCU` model, fails to forecast the large spike in 2021. However, unlike `TCU` it does not over correct and predict higher levels of inflation than the data actual shows. Comparatively, this model performs the best at keeping up with the high levels of inflation after the first large initial spike in 2021.
+ 
+ 
+We can now observe the accuracy measures of all five models:
+
+
+```{r comapare accuracy of all models, in sample }
+accuracy(fit_all) %>% 
+  select(c(".model",".type" ,"MAPE")) %>%
+  kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+
+It seems that while in sample the ensemble model out performed the other four models. The ensemble model has the lowest MAPE compared to the other four models. However, the model is still not perfect. For the true test we can observe how the models performed out of sample.
+
+The following table displays the accuracy measures of the five models while out of sample:
+
+
+```{r comapare accuracy of all models, out of sample}
+accuracy(fc_fit_all, FRED_Inflation_final) %>%
+   select(c(".model",".type" ,"MAPE", "MAE")) %>%
+  kable(format = "html", table.attr = "style='width:30%;' ") %>% 
+    kableExtra::kable_styling()
+```
+
+
+At first glance it seems that the ensemble model did not perform the best while out of sample. By a very slim margin, the `TCU` model has a smaller MAPE compared to the ensemble model. This could be due to the improvement of adding in `EXPINF1YR`, `HOUST`, and `UMP` for certain aspects not outweighing the harm that the same models had. Another metric we can observe to test the ensemble more fairly would be the mean absolute error (MAE). Similar to the MAPE the MAE measures the difference between predicted values and observed values, however it is not converted to a percent. This means that when using MAPE larger differences in the errors are weighted higher. Adding wildly inaccurate models like `UMP` could be why we see a larger MAPE score then predicted in the ensemble model. When observing the MAE we find that the ensemble has a the smallest MAE value by a wider margin then MAPE. 
+
+ <div align="Left"> 
+
+***
+###### **5. Conclusion**
+
+It seems that the ensemble model did preform the best in sample and out of sample. However, all five of these models still leave something to be desired. Forecasting inflation is very difficult and the models in this paper were not equip to handle such a complex task. A basic time series linear model might be able to forecast inflation for the next year, however our specification for this model was not sufficient. We will look to better specify our models and add other relevant variables that effect future levels of inflation.
+
+ <div align="Left"> 
+***
+###### **6. GitHub**
+
+The full RMD code and project file is available through my GitHub website using the following link:
+
+[link](https://mikemargolis1.github.io/)
+
+***
+
+
+
