@@ -101,7 +101,7 @@ In our data we have several variables with trends and seasonality. A tool we wil
 
 We will be using the `KPSS` unit root test to test for the number of unit roots we have in each variable. Unit root tests will tell us if our data is stationary or not.  For variables that we find to have a unit root, we will be transforming those variable accordingly converting them to stationary data. There seems to be a single unit root in all of our variables. We will then apply the rules discussed above and transform each variable in the data accordingly.
 
-```{r testing unit roots and stationarity, include=FALSE}
+```{r testing unit roots and stationarity, results='hide'}
 FRED_Inflation %>%
   features(value, unitroot_ndiffs) %>%
     kable(format = "html", table.attr = "style='width:30%;' ") %>% 
