@@ -99,9 +99,9 @@ The data we gathered from FRED is not stationary data, non-stationary data makes
 
 In our data we have several variables with trends and seasonality. A tool we will use to generate stationary data from non-stationary data is differencing. Differencing is simply computing the differences between consecutive observations. Another technique we will be utilizing is converting level data to the natural logarithm of that same data. Using logs in tandem with differencing will transition our consecutive observations into month over month percent changes. This will help stabilize the variance of our time series, leading to a approximately normal distribution of our error terms. A quick scan of the raw data shows that no observations are equal to zero or have negative values which allows us to transform the data using logarithms. If our raw data had negative or zero values a power transformation would be needed. 
 
-We will be using the `KPSS` unit root test to test for the number of unit roots we have in each variable. Unit root tests will tell us if our data is stationary or not.  For variables that we find to have a unit root, we will be transforming those variable accordingly converting them to stationary data.
+We will be using the `KPSS` unit root test to test for the number of unit roots we have in each variable. Unit root tests will tell us if our data is stationary or not.  For variables that we find to have a unit root, we will be transforming those variable accordingly converting them to stationary data. There seems to be a single unit root in all of our variables. We will then apply the rules discussed above and transform each variable in the data accordingly.
 
-```{r testing unit roots and stationarity}
+```{r testing unit roots and stationarity, include=FALSE}
 FRED_Inflation %>%
   features(value, unitroot_ndiffs) %>%
     kable(format = "html", table.attr = "style='width:30%;' ") %>% 
@@ -115,18 +115,7 @@ FRED_Inflation_wide %>%
     kableExtra::kable_styling()
 ```
 
-There seems to be a single unit root in all of our variables. We will test the hypothesis that there are no unit roots left in the data against the alternative hypothesis that there is a unit root left in the data and the data is not stationary.
-
-We can run the experiment that differencing a variable measured in percents will lead to the variable becoming stationary. We can run this experiment with the Expected One-Year Inflation variable `EXPINF1YR`. We will use:
-
-\begin{align*}
-H_o: EXPINF1YR_t \ is \ stationary \\
-H_a: EXPINF1YR_t \ is \ nonstationary \\
-\end{align*}
-
-as the following hypothesis test and observe the results using the following code:
-
-```{r hypothesis test to find second unit root after differencing}
+```{r hypothesis test to find second unit root after differencing, include=FALSE}
 FRED_Inflation_wide %>%
   mutate(diff_EXPINF1YR = difference(EXPINF1YR)) %>%
   features(diff_EXPINF1YR, unitroot_kpss) %>%
@@ -134,9 +123,6 @@ FRED_Inflation_wide %>%
     kableExtra::kable_styling()
 ```
 
-From the large p-value produced from this test, it seems that after differencing this variable, there are no unit roots left in the data. We can concluded that our Expected One-Year Inflation variable is stationary. 
-
-We will then apply the rules discussed above and transform each variable in the data accordingly.
 
 ```{r transforming the variables into stationary variables}
 FRED_Inflation_final <- FRED_Inflation_wide %>% 
