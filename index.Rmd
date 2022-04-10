@@ -50,6 +50,11 @@ require(kableExtra)
 
 In this paper we will be forecasting U.S. inflation over a 12 month period. We will start with the Stock and Watson (1999) equation for determining inflation. This model revolves around the conventional Philips curve using unemployment and price level. We will be using a training sample from January 1982 to December 2018 and measuring our forecast against actual data from January 2019 to the most recently available data. All data will be retrieved from the Federal Reserve Economic Database in St. Louis.
 
+The full RMD code and project file is available through my GitHub website's project page using the following link:
+
+[link](https://mikemargolis1.github.io/)
+
+
 ***
 ###### **1. Introduction**
 
@@ -365,13 +370,8 @@ It seems that the ensemble model did preform the best in sample and out of sampl
 
  <div align="Left"> 
 ***
-###### **6. GitHub**
 
-The full RMD code and project file is available through my GitHub website using the following link:
 
-[link](https://mikemargolis1.github.io/)
-
-***
 
 
 
