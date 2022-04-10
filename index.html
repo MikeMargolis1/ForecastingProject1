@@ -2279,21 +2279,21 @@ fc_fit %&gt;% autoplot(filter(FRED_Inflation_final, year(Date) &gt; 2016), level
 <div align="Left">
 
 <p>Looking at the graph of our four forecasted models compared to the
-actual data, we find that all of the models fail at certain aspects of
-their forecasting ability. The <code>TCU</code> model fails to forecast
-a large spike in inflation our 2021 and over corrects by over estimating
-inflation around August of 2021. However, it does comparatively do the
-best job at sticking around the higher rates of inflation after it’s
-over prediction. <code>EXPINF1YR</code> and <code>HOUST</code> do a good
-job at keeping up with the large spike in 2021, however they fail to
-catch up to the higher levels of inflation around August of 2021 and
-under predict inflation for the remainder of the test data window. The
-unemployment model <code>UMP</code> is all over the place. From under
-predicting to over predicted back to under predicting, the model does
-not seem to know how to deal with inflation. This is not all the models
-fault the U.S. is currently experiencing distorted levels of
-unemployment and the job market is radically changing in unprecedented
-ways.</p>
+actual data, visually we find that all of the models fail at certain
+aspects of their forecasting ability. The <code>TCU</code> model fails
+to forecast a large spike in inflation our 2021 and over corrects by
+over estimating inflation around August of 2021. However, it does
+comparatively do the best job at sticking around the higher rates of
+inflation after it’s over prediction. <code>EXPINF1YR</code> and
+<code>HOUST</code> do a good job at keeping up with the large spike in
+2021, however they fail to catch up to the higher levels of inflation
+around August of 2021 and under predict inflation for the remainder of
+the test data window. The unemployment model <code>UMP</code> is all
+over the place. From under predicting to over predicted back to under
+predicting, the model does not seem to know how to deal with inflation.
+This is not all the models fault the U.S. is currently experiencing
+distorted levels of unemployment and the job market is radically
+changing in unprecedented ways.</p>
 <p>We observe that the models working independently from each other all
 fail to accurately forecast inflation from 2020 to 2022. But what if the
 models could work with each other. How accurately would the average of
